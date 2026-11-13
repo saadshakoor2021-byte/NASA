@@ -1,0 +1,6 @@
+{
+  "name": "AstraMed — Astronaut Health Console",
+  "description": "Self-assessment and physiological health monitoring console for astronauts on long-duration spaceflight missions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
