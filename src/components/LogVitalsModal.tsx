@@ -100,6 +100,13 @@ export const LogVitalsModal: React.FC<LogVitalsModalProps> = ({
     moodScore: String(latestReading?.moodScore ?? 8),
     radiationDose: String(latestReading?.radiationDose ?? 0.48),
   });
+  const [cabinCo2Ppm, setCabinCo2Ppm] = useState(
+    String(latestReading?.cabinCo2Ppm ?? 2620)
+  );
+  const [cabinO2Pct, setCabinO2Pct] = useState(
+    String(latestReading?.cabinO2Pct ?? 21.1)
+  );
+  const [speAlert, setSpeAlert] = useState(false);
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Partial<Record<IndicatorKey, string>>>({});
 
@@ -194,6 +201,9 @@ export const LogVitalsModal: React.FC<LogVitalsModalProps> = ({
       return;
     }
 
+    const parsedCo2 = Number(cabinCo2Ppm);
+    const parsedO2 = Number(cabinO2Pct);
+
     const reading: VitalReading = {
       id: `vr-md-${nextMissionDay}-${Date.now()}`,
       missionDay: nextMissionDay,
@@ -207,11 +217,17 @@ export const LogVitalsModal: React.FC<LogVitalsModalProps> = ({
       sleepHours: Number(formValues.sleepHours),
       moodScore: Number(formValues.moodScore),
       radiationDose: Number(formValues.radiationDose),
+      cabinCo2Ppm: Number.isFinite(parsedCo2) && parsedCo2 > 0 ? parsedCo2 : 2600,
+      cabinO2Pct: Number.isFinite(parsedO2) && parsedO2 > 0 ? parsedO2 : 21.0,
+      cabinPressureKpa: latestReading?.cabinPressureKpa ?? 101.2,
+      speAlert,
+      sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
       notes: notes.trim() || undefined,
     };
 
     onSaveVitals(reading);
     setNotes('');
+    setSpeAlert(false);
     onClose();
   }
 
@@ -375,6 +391,49 @@ export const LogVitalsModal: React.FC<LogVitalsModalProps> = ({
               })}
             </div>
 
+            {/* Integrated ECLSS & Space Weather Inputs */}
+            <div className="pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <label htmlFor="vital-co2" className="block text-xs font-medium text-slate-200 mb-1">
+                  ECLSS Cabin CO2 <span className="font-mono text-slate-400">(ppm)</span>
+                </label>
+                <input
+                  id="vital-co2"
+                  type="number"
+                  step={50}
+                  min={300}
+                  max={10000}
+                  value={cabinCo2Ppm}
+                  onChange={(e) => setCabinCo2Ppm(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#090D16] border border-slate-700 rounded-md text-sm font-mono tabular-nums text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                />
+              </div>
+              <div>
+                <label htmlFor="vital-o2" className="block text-xs font-medium text-slate-200 mb-1">
+                  Cabin O2 <span className="font-mono text-slate-400">(%)</span>
+                </label>
+                <input
+                  id="vital-o2"
+                  type="number"
+                  step={0.1}
+                  min={15}
+                  max={30}
+                  value={cabinO2Pct}
+                  onChange={(e) => setCabinO2Pct(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#090D16] border border-slate-700 rounded-md text-sm font-mono tabular-nums text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                />
+              </div>
+              <label className="flex items-center gap-2 px-3 py-2 bg-[#090D16] border border-slate-700 rounded-md text-xs text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={speAlert}
+                  onChange={(e) => setSpeAlert(e.target.checked)}
+                  className="rounded border-slate-600 text-cyan-400 focus:ring-cyan-400"
+                />
+                <span>Solar Particle Event (SPE) Alert</span>
+              </label>
+            </div>
+
             <div>
               <label htmlFor="vital-notes" className="block text-xs font-medium text-slate-200 mb-1">
                 Session Context / Symptoms (Optional)
@@ -389,20 +448,44 @@ export const LogVitalsModal: React.FC<LogVitalsModalProps> = ({
               />
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
               <button
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md transition-colors"
+                onClick={() => {
+                  setFormValues({
+                    systolicBp: '126',
+                    diastolicBp: '82',
+                    heartRate: '73',
+                    bloodGlucose: '104',
+                    bodyTemp: '37.1',
+                    sleepHours: '6.5',
+                    moodScore: '7',
+                    radiationDose: '1.15',
+                  });
+                  setCabinCo2Ppm('3400');
+                  setCabinO2Pct('20.9');
+                  setNotes('Synced from wearable strap, cuff, personal dosimeter, and cabin ECLSS.');
+                  setErrors({});
+                }}
+                className="px-3 py-2 text-xs font-medium text-cyan-300 hover:text-cyan-200 bg-[#090D16] border border-slate-700 rounded-md transition-colors"
               >
-                Cancel
+                Pull Sensor Snapshot
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 text-xs font-semibold text-slate-950 bg-cyan-400 hover:bg-cyan-300 rounded-md transition-colors"
-              >
-                Save Telemetry
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-semibold text-slate-950 bg-cyan-400 hover:bg-cyan-300 rounded-md transition-colors"
+                >
+                  Save Telemetry
+                </button>
+              </div>
             </div>
           </form>
         ) : (

@@ -1,17 +1,24 @@
 import {
   BODY_SYSTEMS,
+  CAREER_RADIATION_BASELINE_MSV,
   INDICATOR_DEFINITIONS,
   MISSION_ENVIRONMENTS,
+  NASA_CAREER_LIMIT_MSV,
+  NASA_HRP_RISKS,
 } from '../data/spaceMedicine';
 import type {
   BodySystemId,
+  EclssEvaluation,
   HazardKey,
   HealthStatus,
+  HrpRiskEvaluation,
   IndicatorEvaluation,
   IndicatorKey,
   MissionEnvironmentId,
+  RadiationSummary,
   RoutineTask,
   SystemEvaluation,
+  UltrasoundExam,
   VitalReading,
   VitalValidationResult,
 } from '../types/health';
@@ -196,6 +203,22 @@ export function evaluateSystemStatus(
     }
   }
 
+  // Cross-source ECLSS & Solar Particle Event correlation
+  const eclss = evaluateEclssStatus(latestReading, environmentId);
+  if ((systemId === 'respiratory' || systemId === 'neuro') && eclss.status !== 'nominal') {
+    if (STATUS_PRIORITY[eclss.status] > STATUS_PRIORITY[worstStatus]) {
+      worstStatus = eclss.status;
+    }
+    findings.push(`ECLSS Cabin CO2 elevated (${eclss.co2Ppm} ppm).`);
+    actions.push('Verify sleep-bay circulation fans and inspect CO2 scrubber status.');
+  }
+
+  if ((systemId === 'immune' || systemId === 'ocular') && latestReading.speAlert) {
+    worstStatus = 'action';
+    findings.push('Active Solar Particle Event (SPE) radiation spike flagged by personal dosimeter.');
+    actions.push('Relocate immediately to water/polyethylene-shielded storm shelter.');
+  }
+
   const meta = statusMeta(worstStatus);
   const headline =
     findings.length > 0
@@ -355,3 +378,164 @@ export function computeReadinessSummary(
     streakDays,
   };
 }
+
+export function computeRadiationSummary(readings: VitalReading[]): RadiationSummary {
+  const missionCumulativeMsv = Number(
+    readings.reduce((sum, r) => sum + r.radiationDose, 0).toFixed(2)
+  );
+  const careerTotalMsv = Number(
+    (CAREER_RADIATION_BASELINE_MSV + missionCumulativeMsv).toFixed(2)
+  );
+  const careerPct = Number(
+    Math.min(100, (careerTotalMsv / NASA_CAREER_LIMIT_MSV) * 100).toFixed(1)
+  );
+  const latest = readings[readings.length - 1];
+  const latestDailyMsv = latest?.radiationDose ?? 0;
+  const speActive = Boolean(latest?.speAlert) || latestDailyMsv > 3.5;
+
+  return {
+    missionCumulativeMsv,
+    careerBaselineMsv: CAREER_RADIATION_BASELINE_MSV,
+    careerTotalMsv,
+    careerLimitMsv: NASA_CAREER_LIMIT_MSV,
+    careerPct,
+    latestDailyMsv,
+    speActive,
+  };
+}
+
+export function evaluateEclssStatus(
+  latestReading: VitalReading | undefined,
+  environmentId: MissionEnvironmentId
+): EclssEvaluation {
+  const env =
+    MISSION_ENVIRONMENTS.find((e) => e.id === environmentId) ??
+    MISSION_ENVIRONMENTS[0];
+  const co2Ppm = latestReading?.cabinCo2Ppm ?? env.cabinCo2Ppm;
+  const o2Pct = latestReading?.cabinO2Pct ?? 21.0;
+  const pressureKpa = latestReading?.cabinPressureKpa ?? 101.3;
+
+  let status: HealthStatus = 'nominal';
+  let summary = 'Cabin atmosphere, O2 partial pressure, and CO2 scrubbing are nominal.';
+
+  if (co2Ppm >= 4500 || o2Pct < 19.5 || o2Pct > 23.5 || pressureKpa < 95) {
+    status = 'action';
+    summary = `Critical ECLSS excursion: CO2 ${co2Ppm} ppm · O2 ${o2Pct.toFixed(1)}% · ${pressureKpa.toFixed(1)} kPa.`;
+  } else if (co2Ppm >= 3000) {
+    status = 'monitor';
+    summary = `Elevated cabin CO2 (${co2Ppm} ppm); verify module airflow and scrubber bed.`;
+  }
+
+  const meta = statusMeta(status);
+  return {
+    status,
+    statusLabel: meta.label,
+    glyph: meta.glyph,
+    co2Ppm,
+    o2Pct,
+    pressureKpa,
+    summary,
+  };
+}
+
+export function evaluateHrpRisks(
+  readings: VitalReading[],
+  tasks: RoutineTask[],
+  environmentId: MissionEnvironmentId
+): HrpRiskEvaluation[] {
+  const latest = readings[readings.length - 1];
+  const eclss = evaluateEclssStatus(latest, environmentId);
+  const rad = computeRadiationSummary(readings);
+  const env =
+    MISSION_ENVIRONMENTS.find((e) => e.id === environmentId) ??
+    MISSION_ENVIRONMENTS[0];
+  const envTasks = tasks.filter((t) => t.environments.includes(environmentId));
+  const aredDone = envTasks.find((t) => t.id === 'task-ared-loading')?.completedToday ?? true;
+
+  return NASA_HRP_RISKS.map((risk) => {
+    let worst: HealthStatus = 'nominal';
+    let driverNote = 'Mitigated by current telemetry and countermeasure compliance.';
+
+    for (const sysId of risk.linkedSystems) {
+      const sysEval = evaluateSystemStatus(sysId, latest, environmentId);
+      if (STATUS_PRIORITY[sysEval.status] > STATUS_PRIORITY[worst]) {
+        worst = sysEval.status;
+        driverNote = sysEval.headline;
+      }
+    }
+
+    if (risk.id === 'risk-carcinogenesis' && (rad.speActive || rad.careerPct >= 50)) {
+      worst = rad.speActive ? 'action' : 'monitor';
+      driverNote = `Career dose ${rad.careerTotalMsv}/${rad.careerLimitMsv} mSv (${rad.careerPct}%).`;
+    } else if ((risk.id === 'risk-bone-fracture' || risk.id === 'risk-muscle-atrophy') && !aredDone && env.gravityG < 0.25) {
+      if (STATUS_PRIORITY.monitor > STATUS_PRIORITY[worst]) {
+        worst = 'monitor';
+        driverNote = 'Daily ARED resistive countermeasure not yet completed in low-gravity habitat.';
+      }
+    } else if (risk.id === 'risk-eclss-design' && eclss.status !== 'nominal') {
+      worst = eclss.status;
+      driverNote = eclss.summary;
+    }
+
+    const meta = statusMeta(worst);
+    return {
+      ...risk,
+      status: worst,
+      statusLabel: meta.label,
+      glyph: meta.glyph,
+      driverNote,
+    };
+  });
+}
+
+export function buildStoreAndForwardPacket(
+  readings: VitalReading[],
+  exams: UltrasoundExam[],
+  tasks: RoutineTask[],
+  environmentId: MissionEnvironmentId
+) {
+  const latest = readings[readings.length - 1];
+  const env =
+    MISSION_ENVIRONMENTS.find((e) => e.id === environmentId) ??
+    MISSION_ENVIRONMENTS[0];
+  const readiness = computeReadinessSummary(readings, tasks, environmentId);
+  const eclss = evaluateEclssStatus(latest, environmentId);
+  const radiation = computeRadiationSummary(readings);
+  const systems = BODY_SYSTEMS.map((s) =>
+    evaluateSystemStatus(s.id, latest, environmentId)
+  );
+  const hrpRisks = evaluateHrpRisks(readings, tasks, environmentId);
+
+  return {
+    packetVersion: '1.0',
+    generatedAtUtc: new Date().toISOString(),
+    missionEnvironment: {
+      id: env.id,
+      name: env.name,
+      gravity: env.gravityLabel,
+      commDelayMinutes: env.commDelayMinutes,
+      autonomousModeRequired: env.commDelayMinutes >= 5,
+    },
+    readinessSummary: readiness,
+    eclssTelemetry: eclss,
+    radiationDosimetry: radiation,
+    latestVitals: latest ?? null,
+    systemEvaluations: systems,
+    hrpRiskAssessments: hrpRisks.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.statusLabel,
+      driverNote: r.driverNote,
+    })),
+    attachedUltrasoundExams: exams.map((ex) => ({
+      id: ex.id,
+      missionDay: ex.missionDay,
+      systemId: ex.systemId,
+      examType: ex.examType,
+      caliperMm: ex.caliperMm,
+      selfAssessment: ex.selfAssessment,
+      findingsNote: ex.findingsNote,
+    })),
+  };
+}
+

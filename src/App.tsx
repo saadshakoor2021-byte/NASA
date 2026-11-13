@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Download, RotateCcw, ShieldAlert } from 'lucide-react';
 import { BodyMapSvg } from './components/BodyMapSvg';
 import { LogVitalsModal } from './components/LogVitalsModal';
 import { ProtocolsView } from './components/ProtocolsView';
@@ -22,9 +22,13 @@ import type {
   VitalReading,
 } from './types/health';
 import {
+  buildStoreAndForwardPacket,
   computeHazardProfile,
+  computeRadiationSummary,
   computeReadinessSummary,
   evaluateBloodPressure,
+  evaluateEclssStatus,
+  evaluateHrpRisks,
   evaluateIndicator,
   evaluateSystemStatus,
   statusMeta,
@@ -87,6 +91,7 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState<'vitals' | 'imaging'>('vitals');
   const [modalSystemId, setModalSystemId] = useState<BodySystemId>('ocular');
+  const [packetNotice, setPacketNotice] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -127,6 +132,21 @@ export default function App() {
 
   const readiness = useMemo(
     () => computeReadinessSummary(sortedReadings, tasks, environmentId),
+    [sortedReadings, tasks, environmentId]
+  );
+
+  const radiation = useMemo(
+    () => computeRadiationSummary(sortedReadings),
+    [sortedReadings]
+  );
+
+  const eclss = useMemo(
+    () => evaluateEclssStatus(latestReading, environmentId),
+    [latestReading, environmentId]
+  );
+
+  const hrpRisks = useMemo(
+    () => evaluateHrpRisks(sortedReadings, tasks, environmentId),
     [sortedReadings, tasks, environmentId]
   );
 
@@ -178,6 +198,30 @@ export default function App() {
     setTasks(SEED_ROUTINE_TASKS);
     setExams(SEED_ULTRASOUND_EXAMS);
     setSelectedSystem('cardio');
+    setPacketNotice(null);
+  }
+
+  function handleExportPacket() {
+    const packet = buildStoreAndForwardPacket(
+      sortedReadings,
+      exams,
+      tasks,
+      environmentId
+    );
+    const blob = new Blob([JSON.stringify(packet, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `astramed-packet-md${latestReading?.missionDay ?? 1}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setPacketNotice(
+      `Medical packet exported for MD-${latestReading?.missionDay ?? 1} (${environment.commDelayMinutes >= 5 ? 'store-and-forward autonomous mode' : 'real-time flight surgeon sync'}).`
+    );
   }
 
   function openVitalsModal() {
@@ -336,6 +380,16 @@ export default function App() {
 
             <button
               type="button"
+              onClick={handleExportPacket}
+              aria-label="Export medical packet"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs text-cyan-300 hover:text-cyan-200 bg-[#090D16] border border-slate-800 hover:border-cyan-500/50 rounded-md transition-colors whitespace-nowrap shrink-0"
+            >
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
+              Export Packet
+            </button>
+
+            <button
+              type="button"
               onClick={handleResetDemo}
               aria-label="Reset demo data"
               title="Reset demo telemetry"
@@ -346,6 +400,42 @@ export default function App() {
             </button>
           </div>
         </section>
+
+        {packetNotice && (
+          <div
+            role="status"
+            className="bg-cyan-950/35 border border-cyan-500/40 rounded-lg px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-cyan-200"
+          >
+            <span>{packetNotice}</span>
+            <button
+              type="button"
+              onClick={() => setPacketNotice(null)}
+              className="font-mono text-cyan-300 hover:text-cyan-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {(radiation.speActive || eclss.status === 'action') && (
+          <div
+            role="alert"
+            className="bg-rose-950/45 border border-rose-500/50 rounded-lg p-4 flex items-start gap-3 text-rose-100"
+          >
+            <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="space-y-1 text-xs">
+              <p className="font-mono font-semibold text-rose-300 uppercase">
+                ✖ Immediate Crew Safety Advisory
+              </p>
+              {radiation.speActive && (
+                <p>
+                  Solar Particle Event (SPE) spike detected ({radiation.latestDailyMsv.toFixed(2)} mSv/day). Relocate to water/polyethylene-shielded storm shelter and suspend unshielded EVA.
+                </p>
+              )}
+              {eclss.status === 'action' && <p>{eclss.summary}</p>}
+            </div>
+          </div>
+        )}
 
         {/* 4-Column Core Physiological Strip */}
         {latestReading && (
@@ -497,6 +587,84 @@ export default function App() {
           </section>
         )}
 
+        {/* Unified ECLSS & Career Radiation Dosimetry Strip */}
+        <section
+          aria-label="Unified ECLSS Cabin and Career Radiation Telemetry"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+        >
+          <div className="bg-[#0F1522] border border-slate-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+                  ECLSS Cabin Atmosphere
+                </span>
+                <span
+                  className={`text-xs font-mono ${
+                    eclss.status === 'action'
+                      ? 'text-rose-400'
+                      : eclss.status === 'monitor'
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
+                  }`}
+                >
+                  {eclss.glyph} {eclss.statusLabel}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">{eclss.summary}</p>
+            </div>
+            <div className="flex items-center gap-4 font-mono tabular-nums text-xs shrink-0">
+              <div>
+                <span className="text-slate-400 block">CO2</span>
+                <span className="text-sm font-semibold text-slate-100">{eclss.co2Ppm} ppm</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">O2</span>
+                <span className="text-sm font-semibold text-slate-100">{eclss.o2Pct.toFixed(1)}%</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Press</span>
+                <span className="text-sm font-semibold text-slate-100">{eclss.pressureKpa.toFixed(1)} kPa</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#0F1522] border border-slate-800 rounded-lg p-4 flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+                Personal Dosimetry & Career Exposure Limit
+              </span>
+              <span
+                className={`text-xs font-mono ${
+                  radiation.speActive ? 'text-rose-400' : 'text-emerald-400'
+                }`}
+              >
+                {radiation.speActive ? '✖ SPE Alert' : '● Space Weather Quiet'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 font-mono tabular-nums">
+              <div className="text-xs text-slate-300">
+                Mission Dose:{' '}
+                <span className="text-sm font-semibold text-slate-100">
+                  {radiation.missionCumulativeMsv} mSv
+                </span>
+                {' · '}Career:{' '}
+                <span className="text-sm font-semibold text-cyan-300">
+                  {radiation.careerTotalMsv} / {radiation.careerLimitMsv} mSv
+                </span>
+              </div>
+              <span className="text-xs text-slate-400">{radiation.careerPct}% of NASA limit</span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-200 ${
+                  radiation.speActive ? 'bg-rose-500' : 'bg-cyan-400'
+                }`}
+                style={{ width: `${Math.max(2, radiation.careerPct)}%` }}
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Active View Area */}
         {activeTab === 'body-map' && (
           <div className="space-y-5">
@@ -589,6 +757,7 @@ export default function App() {
                       <th className="py-2 pr-4 font-medium">Sleep (h)</th>
                       <th className="py-2 pr-4 font-medium">Mood</th>
                       <th className="py-2 pr-4 font-medium">Rad (mSv)</th>
+                      <th className="py-2 pr-4 font-medium">CO2 (ppm)</th>
                       <th className="py-2 font-medium">Notes</th>
                     </tr>
                   </thead>
@@ -608,6 +777,9 @@ export default function App() {
                         <td className="py-2.5 pr-4 text-slate-200">{r.moodScore}/10</td>
                         <td className="py-2.5 pr-4 text-slate-200">
                           {r.radiationDose.toFixed(2)}
+                        </td>
+                        <td className="py-2.5 pr-4 text-slate-200">
+                          {r.cabinCo2Ppm ?? '—'}
                         </td>
                         <td className="py-2.5 font-sans text-slate-400 min-w-[180px]">
                           {r.notes ?? '—'}
@@ -639,6 +811,7 @@ export default function App() {
         {activeTab === 'protocols' && (
           <ProtocolsView
             environment={environment}
+            hrpRisks={hrpRisks}
             onSelectSystemFromProtocol={(sysId) => {
               setSelectedSystem(sysId);
               setActiveTab('body-map');

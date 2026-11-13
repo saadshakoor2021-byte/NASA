@@ -13,38 +13,62 @@ interface TrendChartsProps {
   environment: MissionEnvironment;
 }
 
-const CHART_INDICATORS: IndicatorKey[] = [
-  'systolicBp',
-  'heartRate',
-  'bloodGlucose',
-  'bodyTemp',
-  'sleepHours',
-  'moodScore',
-  'radiationDose',
+type ChartMetricKey = IndicatorKey | 'cabinCo2Ppm';
+
+const CHART_METRICS: Array<{ key: ChartMetricKey; tabLabel: string }> = [
+  { key: 'systolicBp', tabLabel: 'BP (Sys)' },
+  { key: 'heartRate', tabLabel: 'Heart Rate' },
+  { key: 'bloodGlucose', tabLabel: 'Glucose' },
+  { key: 'bodyTemp', tabLabel: 'Temp' },
+  { key: 'sleepHours', tabLabel: 'Sleep' },
+  { key: 'moodScore', tabLabel: 'Mood' },
+  { key: 'radiationDose', tabLabel: 'Radiation' },
+  { key: 'cabinCo2Ppm', tabLabel: 'Cabin CO2' },
 ];
+
+function getMetricMeta(key: ChartMetricKey) {
+  if (key === 'cabinCo2Ppm') {
+    return {
+      label: 'ECLSS Cabin CO2',
+      unit: 'ppm',
+      precision: 0,
+      nominalMin: 1500,
+      nominalMax: 3000,
+      step: 100,
+    };
+  }
+  return INDICATOR_DEFINITIONS[key];
+}
+
+function getMetricValue(r: VitalReading, key: ChartMetricKey): number {
+  if (key === 'cabinCo2Ppm') {
+    return r.cabinCo2Ppm ?? 2600;
+  }
+  return r[key];
+}
 
 export const TrendCharts: React.FC<TrendChartsProps> = ({
   readings,
   hazardProfile,
   environment,
 }) => {
-  const [activeMetric, setActiveMetric] = useState<IndicatorKey>('bloodGlucose');
+  const [activeMetric, setActiveMetric] = useState<ChartMetricKey>('bloodGlucose');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  const def = INDICATOR_DEFINITIONS[activeMetric];
+  const def = getMetricMeta(activeMetric);
   const sorted = [...readings].sort((a, b) => a.missionDay - b.missionDay);
 
   // SVG Time-Series Geometry
   const width = 660;
   const height = 240;
-  const padLeft = 48;
+  const padLeft = 52;
   const padRight = 20;
   const padTop = 20;
   const padBottom = 34;
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
 
-  const values = sorted.map((r) => r[activeMetric]);
+  const values = sorted.map((r) => getMetricValue(r, activeMetric));
   const rawMin = Math.min(...values, def.nominalMin);
   const rawMax = Math.max(...values, def.nominalMax);
   const margin = Math.max((rawMax - rawMin) * 0.18, def.step * 2);
@@ -62,7 +86,7 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
   };
 
   const linePoints = sorted
-    .map((r, idx) => `${xPos(idx).toFixed(1)},${yPos(r[activeMetric]).toFixed(1)}`)
+    .map((r, idx) => `${xPos(idx).toFixed(1)},${yPos(getMetricValue(r, activeMetric)).toFixed(1)}`)
     .join(' ');
 
   const nominalTopY = yPos(def.nominalMax);
@@ -124,17 +148,16 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
             role="tablist"
             aria-label="Select vital indicator trend"
           >
-            {CHART_INDICATORS.map((key) => {
-              const item = INDICATOR_DEFINITIONS[key];
-              const isSelected = activeMetric === key;
+            {CHART_METRICS.map((item) => {
+              const isSelected = activeMetric === item.key;
               return (
                 <button
-                  key={key}
+                  key={item.key}
                   type="button"
                   role="tab"
                   aria-selected={isSelected}
                   onClick={() => {
-                    setActiveMetric(key);
+                    setActiveMetric(item.key);
                     setHoveredIndex(null);
                   }}
                   className={`px-2.5 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
@@ -143,19 +166,7 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
                       : 'text-slate-400 hover:text-slate-200 border border-transparent'
                   }`}
                 >
-                  {item.key === 'systolicBp'
-                    ? 'BP (Sys)'
-                    : item.key === 'heartRate'
-                      ? 'Heart Rate'
-                      : item.key === 'bloodGlucose'
-                        ? 'Glucose'
-                        : item.key === 'bodyTemp'
-                          ? 'Temp'
-                          : item.key === 'sleepHours'
-                            ? 'Sleep'
-                            : item.key === 'moodScore'
-                              ? 'Mood'
-                              : 'Radiation'}
+                  {item.tabLabel}
                 </button>
               );
             })}
@@ -170,7 +181,7 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
             </span>
             <div className="flex items-center gap-4">
               <span className="text-cyan-300 font-semibold tabular-nums">
-                {activeReading[activeMetric].toFixed(def.precision)} {def.unit}
+                {getMetricValue(activeReading, activeMetric).toFixed(def.precision)} {def.unit}
               </span>
               {activeMetric === 'systolicBp' && (
                 <span className="text-slate-400 tabular-nums">
@@ -276,9 +287,10 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
 
             {/* Crosshair & Data Points */}
             {sorted.map((r, idx) => {
+              const val = getMetricValue(r, activeMetric);
               const cx = xPos(idx);
-              const cy = yPos(r[activeMetric]);
-              const isOut = r[activeMetric] < def.nominalMin || r[activeMetric] > def.nominalMax;
+              const cy = yPos(val);
+              const isOut = val < def.nominalMin || val > def.nominalMax;
               const isActive = idx === activePointIndex;
 
               return (
@@ -287,7 +299,7 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({
                   onMouseEnter={() => setHoveredIndex(idx)}
                   onFocus={() => setHoveredIndex(idx)}
                   tabIndex={0}
-                  aria-label={`Mission Day ${r.missionDay}: ${r[activeMetric]} ${def.unit}`}
+                  aria-label={`Mission Day ${r.missionDay}: ${val} ${def.unit}`}
                   className="cursor-pointer outline-none"
                 >
                   {isActive && (

@@ -45,7 +45,53 @@ export interface VitalReading {
   sleepHours: number;
   moodScore: number;
   radiationDose: number;
+  cabinCo2Ppm?: number;
+  cabinO2Pct?: number;
+  cabinPressureKpa?: number;
+  speAlert?: boolean;
+  sourceSummary?: string;
   notes?: string;
+}
+
+export interface RadiationSummary {
+  missionCumulativeMsv: number;
+  careerBaselineMsv: number;
+  careerTotalMsv: number;
+  careerLimitMsv: number;
+  careerPct: number;
+  latestDailyMsv: number;
+  speActive: boolean;
+}
+
+export interface EclssEvaluation {
+  status: HealthStatus;
+  statusLabel: string;
+  glyph: string;
+  co2Ppm: number;
+  o2Pct: number;
+  pressureKpa: number;
+  summary: string;
+}
+
+export interface HrpRiskDefinition {
+  id: string;
+  title: string;
+  researchDomain:
+    | 'Radiation Research'
+    | 'Behavioral Health & Performance'
+    | 'Human Health Countermeasures'
+    | 'Medical Capabilities'
+    | 'Advanced Environmental Health';
+  description: string;
+  linkedSystems: BodySystemId[];
+  linkedHazards: HazardKey[];
+}
+
+export interface HrpRiskEvaluation extends HrpRiskDefinition {
+  status: HealthStatus;
+  statusLabel: string;
+  glyph: string;
+  driverNote: string;
 }
 
 export interface MissionEnvironment {

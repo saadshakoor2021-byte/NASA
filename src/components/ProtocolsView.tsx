@@ -5,15 +5,22 @@ import {
   INDICATOR_DEFINITIONS,
   NASA_FIVE_HAZARDS,
 } from '../data/spaceMedicine';
-import type { BodySystemId, IndicatorKey, MissionEnvironment } from '../types/health';
+import type {
+  BodySystemId,
+  HrpRiskEvaluation,
+  IndicatorKey,
+  MissionEnvironment,
+} from '../types/health';
 
 interface ProtocolsViewProps {
   environment: MissionEnvironment;
+  hrpRisks: HrpRiskEvaluation[];
   onSelectSystemFromProtocol: (systemId: BodySystemId) => void;
 }
 
 export const ProtocolsView: React.FC<ProtocolsViewProps> = ({
   environment,
+  hrpRisks,
   onSelectSystemFromProtocol,
 }) => {
   const [query, setQuery] = useState('');
@@ -98,6 +105,71 @@ export const ProtocolsView: React.FC<ProtocolsViewProps> = ({
               </div>
             </article>
           ))}
+        </div>
+      </div>
+
+      {/* NASA HRP Clinical Risks Registry (Live Evaluation) */}
+      <div className="bg-[#0F1522] border border-slate-800 rounded-lg p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-800/80">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">
+              NASA HRP Clinical Risk Register
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Live status across NASA Human Research Program medical & behavioral risks based on current telemetry and countermeasures.
+            </p>
+          </div>
+          <span className="text-xs font-mono text-slate-400">
+            {hrpRisks.filter((r) => r.status !== 'nominal').length} elevated / {hrpRisks.length} tracked
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-4">
+          {hrpRisks.map((risk) => {
+            const tone =
+              risk.status === 'action'
+                ? 'text-rose-400'
+                : risk.status === 'monitor'
+                  ? 'text-amber-400'
+                  : 'text-emerald-400';
+
+            return (
+              <div
+                key={risk.id}
+                className="bg-[#0A0F1A] border border-slate-800 rounded-md p-3.5 flex flex-col justify-between gap-2.5"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {risk.researchDomain}
+                    </span>
+                    <span className={`text-xs font-mono whitespace-nowrap shrink-0 ${tone}`}>
+                      {risk.glyph} {risk.statusLabel}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-100 mt-1">
+                    {risk.title}
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    {risk.description}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-400 line-clamp-1">
+                    {risk.driverNote}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSelectSystemFromProtocol(risk.linkedSystems[0])}
+                    className="text-xs font-mono text-cyan-300 hover:text-cyan-200 underline underline-offset-2 whitespace-nowrap shrink-0"
+                  >
+                    Inspect
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

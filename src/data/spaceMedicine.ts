@@ -1,6 +1,7 @@
 import type {
   BodySystemInfo,
   HazardDetail,
+  HrpRiskDefinition,
   IndicatorDefinition,
   IndicatorKey,
   MissionEnvironment,
@@ -8,6 +9,93 @@ import type {
   UltrasoundExam,
   VitalReading,
 } from '../types/health';
+
+export const CAREER_RADIATION_BASELINE_MSV = 18.4;
+export const NASA_CAREER_LIMIT_MSV = 600;
+
+export const NASA_HRP_RISKS: HrpRiskDefinition[] = [
+  {
+    id: 'risk-carcinogenesis',
+    title: 'Radiation-Induced Carcinogenesis',
+    researchDomain: 'Radiation Research',
+    description:
+      'Long-term fatal cancer risk from cumulative Galactic Cosmic Rays (GCR) and Solar Particle Events (SPE).',
+    linkedSystems: ['immune'],
+    linkedHazards: ['radiation'],
+  },
+  {
+    id: 'risk-cns-radiation',
+    title: 'Radiation-Induced CNS & Cognitive Impairment',
+    researchDomain: 'Radiation Research',
+    description:
+      'Cumulative ionizing dose affecting neural plasticity, motor coordination, and executive speed.',
+    linkedSystems: ['neuro', 'immune'],
+    linkedHazards: ['radiation', 'distance'],
+  },
+  {
+    id: 'risk-bone-fracture',
+    title: 'Bone Mineral Loss & Fracture Risk',
+    researchDomain: 'Human Health Countermeasures',
+    description:
+      'Microgravity unloading triggers 1–1.5% monthly trabecular demineralization and elevated urinary calcium.',
+    linkedSystems: ['musculoskeletal'],
+    linkedHazards: ['gravity'],
+  },
+  {
+    id: 'risk-muscle-atrophy',
+    title: 'Reduced Muscle Mass, Strength & Endurance',
+    researchDomain: 'Human Health Countermeasures',
+    description:
+      'Postural and anti-gravity muscle deconditioning impairing surface EVA and emergency egress.',
+    linkedSystems: ['musculoskeletal', 'cardio'],
+    linkedHazards: ['gravity'],
+  },
+  {
+    id: 'risk-sans',
+    title: 'Spaceflight-Associated Neuro-ocular Syndrome (SANS)',
+    researchDomain: 'Medical Capabilities',
+    description:
+      'Cephalad fluid shift elevates intracranial venous pressure, risking optic disc edema and hyperopic shift.',
+    linkedSystems: ['ocular', 'cardio'],
+    linkedHazards: ['gravity', 'radiation'],
+  },
+  {
+    id: 'risk-behavioral',
+    title: 'Adverse Behavioral & Psychiatric Conditions',
+    researchDomain: 'Behavioral Health & Performance',
+    description:
+      'Isolation, confinement, and Earth-out-of-view distance elevate mood strain and interpersonal stress.',
+    linkedSystems: ['neuro'],
+    linkedHazards: ['isolation', 'distance'],
+  },
+  {
+    id: 'risk-fatigue',
+    title: 'Performance Errors Due to Circadian Fatigue',
+    researchDomain: 'Behavioral Health & Performance',
+    description:
+      '90-minute orbital light cycles, cabin noise, and CO2 pockets fragment REM sleep and reaction speed.',
+    linkedSystems: ['neuro', 'respiratory'],
+    linkedHazards: ['isolation', 'environment'],
+  },
+  {
+    id: 'risk-eclss-design',
+    title: 'Hostile Environment & Vehicle / ECLSS Anomaly',
+    researchDomain: 'Advanced Environmental Health',
+    description:
+      'Closed-loop air scrubbing, pressure integrity, particulate dust, and trace contaminants in sealed modules.',
+    linkedSystems: ['respiratory', 'immune'],
+    linkedHazards: ['environment'],
+  },
+  {
+    id: 'risk-acute-medical',
+    title: 'Autonomous Acute & Chronic Medical Events',
+    researchDomain: 'Medical Capabilities',
+    description:
+      'Cardiac arrhythmia, renal stone, or infection occurring under 4–22 minute Earth comm latency.',
+    linkedSystems: ['cardio', 'metabolic', 'musculoskeletal'],
+    linkedHazards: ['distance', 'gravity', 'environment'],
+  },
+];
 
 export const MISSION_ENVIRONMENTS: MissionEnvironment[] = [
   {
@@ -530,6 +618,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.5,
     moodScore: 8,
     radiationDose: 0.44,
+    cabinCo2Ppm: 2450,
+    cabinO2Pct: 21.1,
+    cabinPressureKpa: 101.2,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
     notes: 'Baseline wake vitals; ARED lower body completed.',
   },
   {
@@ -545,6 +638,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.0,
     moodScore: 8,
     radiationDose: 0.46,
+    cabinCo2Ppm: 2520,
+    cabinO2Pct: 21.0,
+    cabinPressureKpa: 101.3,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-35',
@@ -559,6 +657,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 6.5,
     moodScore: 7,
     radiationDose: 0.48,
+    cabinCo2Ppm: 2680,
+    cabinO2Pct: 21.0,
+    cabinPressureKpa: 101.1,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-36',
@@ -573,6 +676,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 6.0,
     moodScore: 7,
     radiationDose: 0.52,
+    cabinCo2Ppm: 2950,
+    cabinO2Pct: 20.9,
+    cabinPressureKpa: 101.0,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
     notes: 'Cargo transfer workload; slightly shortened sleep block.',
   },
   {
@@ -588,6 +696,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.0,
     moodScore: 8,
     radiationDose: 0.49,
+    cabinCo2Ppm: 2600,
+    cabinO2Pct: 21.1,
+    cabinPressureKpa: 101.2,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-38',
@@ -602,6 +715,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 6.5,
     moodScore: 7,
     radiationDose: 0.55,
+    cabinCo2Ppm: 3150,
+    cabinO2Pct: 20.8,
+    cabinPressureKpa: 101.1,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-39',
@@ -616,7 +734,12 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 6.0,
     moodScore: 6,
     radiationDose: 0.62,
-    notes: 'Noticed mild morning sinus fullness; verified crew bay fan.',
+    cabinCo2Ppm: 3850,
+    cabinO2Pct: 20.7,
+    cabinPressureKpa: 100.9,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
+    notes: 'Noticed mild morning sinus fullness alongside elevated crew-bay CO2; verified circulation fan.',
   },
   {
     id: 'vr-md-40',
@@ -631,6 +754,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.5,
     moodScore: 8,
     radiationDose: 0.47,
+    cabinCo2Ppm: 2580,
+    cabinO2Pct: 21.0,
+    cabinPressureKpa: 101.2,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-41',
@@ -645,6 +773,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.5,
     moodScore: 8,
     radiationDose: 0.45,
+    cabinCo2Ppm: 2490,
+    cabinO2Pct: 21.1,
+    cabinPressureKpa: 101.3,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
   },
   {
     id: 'vr-md-42',
@@ -659,6 +792,11 @@ export const SEED_VITAL_READINGS: VitalReading[] = [
     sleepHours: 7.0,
     moodScore: 8,
     radiationDose: 0.46,
+    cabinCo2Ppm: 2620,
+    cabinO2Pct: 21.1,
+    cabinPressureKpa: 101.3,
+    speAlert: false,
+    sourceSummary: 'Wearable + Medical Cuff + REM Dosimeter + ECLSS',
     notes: 'Morning baseline nominal prior to science payload run.',
   },
 ];
